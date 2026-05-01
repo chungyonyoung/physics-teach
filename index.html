@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交流发电机 - 供小欧上课演示</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #e9ecef;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px; /* 减小移动端的页面内边距 */
+            margin: 0;
+            color: #333;
+        }
+        h1 { 
+            color: #2c3e50; 
+            font-size: 1.5rem; 
+            margin-bottom: 15px; 
+            text-align: center;
+        }
+        .container {
+            background: white;
+            padding: 15px; /* 缩小内边距以适应小屏幕 */
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+            width: 100%; /* 2. 宽度改为 100% */
+            max-width: 850px; /* 设置最大宽度保护 PC 端显示 */
+            box-sizing: border-box; /* 确保内边距不会撑破容器 */
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap; /* 允许按钮在屏幕不够宽时自动换行 */
+            justify-content: center;
+        }
+        button {
+            flex: 1 1 120px; /* 3. 让按钮具有弹性，小屏幕自动填满排版 */
+            padding: 10px 12px;
+            border: none;
+            border-radius: 6px;
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.3s;
+            text-align: center;
+        }
+        button:hover { background-color: #2980b9; }
+        button.active { background-color: #e74c3c; box-shadow: inset 0 3px 5px rgba(0,0,0,0.2); }
+        button.play-btn { background-color: #27ae60; flex-basis: 100%; /* 让播放按钮在移动端单独占一行 */ }
+        button.play-btn:hover { background-color: #2ecc71; }
+        
+        .panel {
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            min-height: auto; /* 移除固定高度 */
+        }
+        .panel h3 { margin: 0 0 8px 0; color: #2c3e50; font-size: 1.1rem; }
+        .panel p { margin: 0; color: #555; line-height: 1.5; font-size: 0.95rem; }
+        
+        canvas {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto;
+            width: 100%; /* 4. 关键点：让 Canvas 视觉宽度自适应容器 */
+            height: auto; /* 高度等比例缩放 */
+            max-width: 800px;
+        }
+        
+        /* 针对大屏幕的微调 */
+        @media (min-width: 600px) {
+            button.play-btn { flex-basis: auto; }
+            .container { padding: 25px; }
+            h1 { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>交流发电机：演示</h1>
+    
+    <div class="container">
+        <div class="controls">
+            <button id="btn-step1" onclick="setStep(1, 0)">阶段一: 0°</button>
+            <button id="btn-step2" onclick="setStep(2, 90)">阶段二: 90°</button>
+            <button id="btn-step3" onclick="setStep(3, 180)">阶段三: 180°</button>
+            <button id="btn-step4" onclick="setStep(4, 270)">阶段四: 270°</button>
+            <button id="btn-auto" class="play-btn" onclick="toggleAuto()">▶ 连续演示 (逆时针)</button>
+        </div>
+
+        <div class="panel">
+            <h3 id="desc-title">等待操作...</h3>
+            <p id="desc-text">请点击上方的阶段按钮，或者点击“连续演示”观察发电机的运行原理。</p>
+        </div>
+
+        <canvas id="genCanvas" width="800" height="550"></canvas>
+    </div>
+
+<script>
+    const canvas = document.getElementById('genCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let currentAngle = 0;
+    let targetAngle = 0;
+    let isAutoPlay = false;
+    
+    const descriptions = {
+        1: { title: "阶段一：中性面 (0°)", text: "线圈平面与磁感线垂直。穿过线圈的<b>磁通量最大</b>，但由于线圈在这个瞬间的运动方向平行于磁场，<b>没有切割磁感线</b>，因此根据法拉第定律，产生的感应电动势为 <b>0</b>。" },
+        2: { title: "阶段二：平行面 (90°)", text: "线圈逆时针旋转了90度。此时线圈平面与磁感线平行。穿过线圈的磁通量为 0，但两侧导线的运动方向刚好垂直撞向磁感线，<b>切割速度最快</b>，此时产生的感应电动势达到<b>最大值（波峰）</b>。" },
+        3: { title: "阶段三：反转中性面 (180°)", text: "线圈继续逆时针旋转至180度。线圈再次与磁场垂直，切割磁感线的速度再次降为 0。产生的感应电动势也随之回到 <b>0</b>。" },
+        4: { title: "阶段四：反转平行面 (270°)", text: "线圈旋转至270度。此时线圈再次与磁场平行，但由于导线互换了位置，它们正以相反的方向切割磁感线。因此，产生的电流方向完全相反，达到<b>负向最大值（波谷）</b>。" },
+        auto: { title: "连续发电模式：正弦波的诞生", text: "在逆时针的连续圆周运动中，切割磁感线的有效速度呈现周期性变化。这种机械能的持续输入，最终在右侧转化为了平滑、交替方向的<b>正弦交流电 (AC)</b>。" }
+    };
+
+    function setStep(step, angle) {
+        isAutoPlay = false;
+        targetAngle = angle;
+        updateUI(step);
+    }
+
+    function toggleAuto() {
+        isAutoPlay = !isAutoPlay;
+        if(isAutoPlay) {
+            updateUI('auto');
+            document.getElementById('btn-auto').innerHTML = "⏸ 暂停演示";
+        } else {
+            targetAngle = currentAngle;
+            document.getElementById('btn-auto').innerHTML = "▶ 连续演示 (逆时针)";
+        }
+    }
+
+    function updateUI(activeStep) {
+        for(let i=1; i<=4; i++) {
+            document.getElementById(`btn-step${i}`).classList.remove('active');
+        }
+        if(activeStep !== 'auto' && activeStep >= 1 && activeStep <= 4) {
+            document.getElementById(`btn-step${activeStep}`).classList.add('active');
+        }
+        document.getElementById('desc-title').innerHTML = descriptions[activeStep].title;
+        document.getElementById('desc-text').innerHTML = descriptions[activeStep].text;
+    }
+    
+    const cx = 400, cy = 220;
+    function project(x, y, z) {
+        return { x: cx + x, y: cy + y - z * 0.25 };
+    }
+
+    let historyData = [];
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (isAutoPlay) {
+            currentAngle += 1.5; 
+            if(currentAngle >= 360) currentAngle -= 360;
+        } else {
+            let diff = targetAngle - currentAngle;
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            currentAngle += diff * 0.05;
+        }
+
+        const rad = currentAngle * Math.PI / 180;
+
+        drawMagnetsAndField();
+        drawCoil(rad);
+        drawGraph(rad);
+
+        requestAnimationFrame(draw);
+    }
+
+    function drawMagnetsAndField() {
+        ctx.fillStyle = '#e74c3c'; ctx.fillRect(50, 100, 100, 240);
+        ctx.fillStyle = '#c0392b'; ctx.fillRect(150, 100, 20, 240);
+        ctx.fillStyle = 'white'; ctx.font = 'bold 40px Arial'; ctx.fillText('N', 90, 230);
+
+        ctx.fillStyle = '#3498db'; ctx.fillRect(650, 100, 100, 240);
+        ctx.fillStyle = '#2980b9'; ctx.fillRect(630, 100, 20, 240);
+        ctx.fillStyle = 'white'; ctx.font = 'bold 40px Arial'; ctx.fillText('S', 680, 230);
+
+        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(52, 152, 219, 0.4)';
+        for(let y = 140; y <= 300; y += 40) {
+            ctx.beginPath(); ctx.moveTo(170, y); ctx.lineTo(630, y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(400, y); ctx.lineTo(390, y - 5); ctx.lineTo(390, y + 5);
+            ctx.fillStyle = 'rgba(52, 152, 219, 0.6)'; ctx.fill();
+        }
+    }
+
+    function drawCoil(rad) {
+        const R = 120, H = 180;
+        let wires = [
+            { id: 1, x: -R * Math.sin(rad), z: R * Math.cos(rad) },
+            { id: 2, x: R * Math.sin(rad), z: -R * Math.cos(rad) }
+        ];
+        wires.sort((a, b) => a.z - b.z);
+
+        let p1 = project(wires[0].x, -H/2, wires[0].z);
+        let p2 = project(wires[0].x, H/2, wires[0].z);
+        let p3 = project(wires[1].x, H/2, wires[1].z);
+        let p4 = project(wires[1].x, -H/2, wires[1].z);
+
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath();
+        ctx.fillStyle = 'rgba(241, 196, 15, 0.15)'; ctx.fill();
+
+        ctx.lineWidth = 6; ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#d35400'; ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+        
+        ctx.lineWidth = 4; ctx.strokeStyle = '#e67e22';
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.stroke();
+        
+        ctx.lineWidth = 6; ctx.strokeStyle = '#f39c12';
+        ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke();
+
+        let emf = Math.sin(rad); 
+        if (Math.abs(emf) > 0.1) {
+            drawCurrentArrows(p3, p4, emf, true); 
+            drawCurrentArrows(p1, p2, -emf, false); 
+        }
+    }
+
+    function drawCurrentArrows(pb, pt, emf, isFront) {
+        let midY = (pb.y + pt.y) / 2;
+        let x = pb.x;
+        let direction = emf > 0 ? 1 : -1; 
+        let size = 8 + Math.abs(emf) * 8;
+        
+        ctx.beginPath();
+        ctx.moveTo(x, midY + direction * size);
+        ctx.lineTo(x - size*0.6, midY - direction * size*0.8);
+        ctx.lineTo(x + size*0.6, midY - direction * size*0.8);
+        ctx.fillStyle = `rgba(46, 204, 113, ${Math.abs(emf)})`; 
+        ctx.fill();
+    }
+
+    function drawGraph(rad) {
+        const graphY = 460, amplitude = 50;
+        let currentEMF = Math.sin(rad);
+        historyData.unshift(currentEMF);
+        if(historyData.length > 600) historyData.pop();
+
+        ctx.beginPath(); ctx.moveTo(100, graphY); ctx.lineTo(700, graphY);
+        ctx.strokeStyle = '#bdc3c7'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
+        
+        ctx.fillStyle = '#7f8c8d'; ctx.font = '14px Arial'; ctx.fillText('感应电动势 (V) = 0', 100, graphY - 10);
+
+        ctx.beginPath(); ctx.moveTo(100, graphY - historyData[0] * amplitude);
+        for(let i = 1; i < historyData.length; i++) {
+            if(100 + i > 700) break;
+            ctx.lineTo(100 + i, graphY - historyData[i] * amplitude);
+        }
+        ctx.strokeStyle = '#27ae60'; ctx.lineWidth = 3; ctx.stroke();
+
+        ctx.beginPath(); ctx.arc(100, graphY - currentEMF * amplitude, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#e74c3c'; ctx.fill();
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    updateUI(1);
+    draw();
+</script>
+</body>
+</html>
